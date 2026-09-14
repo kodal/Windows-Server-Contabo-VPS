@@ -22,14 +22,9 @@ lsblk "$DISK"
 
 apt update
 apt install -y \
-    grub-pc \
-    grub-pc-bin \
-    grub2-common \
+    grub2 \
     ntfs-3g \
-    wimtools \
-    rsync \
-    wget \
-    parted
+    wimtools
 
 # --------------------------------------------------
 # 2. Completely wipe disk
