@@ -1,93 +1,223 @@
 #!/bin/bash
 
-apt update -y && apt upgrade -y
+set -e
 
-apt install grub2 wimtools ntfs-3g -y
+DISK=/dev/sda
+WORK=/root/windisk
 
-#Get the disk size in GB and convert to MB
-disk_size_gb=$(parted /dev/sda --script print | awk '/^Disk \/dev\/sda:/ {print int($3)}')
-disk_size_mb=$((disk_size_gb * 1024))
+WIN_URL="https://go.microsoft.com/fwlink/?linkid=2273506"
+VIRTIO_URL="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso"
 
-#Calculate partition size (25% of total size)
-part_size_mb=$((disk_size_mb / 4))
+WIN_ISO="$WORK/winserver.iso"
+VIRTIO_ISO="$WORK/virtio.iso"
 
-#Create GPT partition table
-parted /dev/sda --script -- mklabel gpt
+echo "========================================"
+echo "Windows Server 2025 installer"
+echo "========================================"
+echo
+lsblk "$DISK"
+# --------------------------------------------------
+# 1. Install required tools
+# --------------------------------------------------
 
-#Create two partitions
-parted /dev/sda --script -- mkpart primary ntfs 1MB ${part_size_mb}MB
-parted /dev/sda --script -- mkpart primary ntfs ${part_size_mb}MB $((2 * part_size_mb))MB
+apt update
+apt install -y \
+    grub-pc \
+    grub-pc-bin \
+    grub2-common \
+    ntfs-3g \
+    wimtools \
+    rsync \
+    wget \
+    parted
 
-#Inform kernel of partition table changes
-partprobe /dev/sda
+# --------------------------------------------------
+# 2. Completely wipe disk
+# --------------------------------------------------
 
-sleep 30
+echo
+echo "Wiping $DISK..."
 
-partprobe /dev/sda
+umount "${DISK}"* 2>/dev/null || true
 
-sleep 30
+wipefs -a "$DISK"
 
-partprobe /dev/sda
+# Remove first/last part of disk to ensure clean partition table
+dd if=/dev/zero of="$DISK" bs=1M count=10 status=progress
+DISK_SIZE=$(blockdev --getsz "$DISK")
+dd if=/dev/zero of="$DISK" bs=512 seek=$((DISK_SIZE - 20480)) count=20480 status=progress
 
-sleep 30 
+sync
 
-#Format the partitions
-mkfs.ntfs -f /dev/sda1
-mkfs.ntfs -f /dev/sda2
+# --------------------------------------------------
+# 3. Create MBR
+# --------------------------------------------------
 
-echo "NTFS partitions created"
+echo
+echo "Creating MBR..."
 
-echo -e "r\ng\np\nw\nY\n" | gdisk /dev/sda
+parted -s "$DISK" mklabel msdos
 
-mount /dev/sda1 /mnt
+# 8 GB installer
+parted -s "$DISK" mkpart primary ntfs 1MiB 8193MiB
 
-#Prepare directory for the Windows disk
-cd ~
-mkdir windisk
+# Rest of disk for Windows
+parted -s "$DISK" mkpart primary ntfs 8193MiB 100%
 
-mount /dev/sda2 windisk
+parted -s "$DISK" set 1 boot on
 
-grub-install --root-directory=/mnt /dev/sda
+partprobe "$DISK"
+sleep 3
 
-#Edit GRUB configuration
-cd /mnt/boot/grub
-cat <<EOF > grub.cfg
-menuentry "windows installer" {
-	insmod ntfs
-	search --set=root --file=/bootmgr
-	ntldr /bootmgr
-	boot
+# --------------------------------------------------
+# 4. Format partitions
+# --------------------------------------------------
+
+echo
+echo "Formatting..."
+
+mkfs.ntfs -f -L WINSETUP "${DISK}1"
+mkfs.ntfs -f -L WINDOWS "${DISK}2"
+
+# --------------------------------------------------
+# 5. Download ISO files
+# --------------------------------------------------
+
+mkdir -p "$WORK"
+
+echo
+echo "Downloading Windows Server ISO..."
+
+wget \
+    --user-agent="Mozilla/5.0" \
+    -O "$WIN_ISO" \
+    "$WIN_URL"
+
+echo
+echo "Downloading VirtIO ISO..."
+
+wget \
+    --user-agent="Mozilla/5.0" \
+    -O "$VIRTIO_ISO" \
+    "$VIRTIO_URL"
+
+# --------------------------------------------------
+# 6. Mount partitions / ISOs
+# --------------------------------------------------
+
+mkdir -p /mnt/winsetup
+mkdir -p /mnt/winiso
+mkdir -p /mnt/virtio
+
+mount "${DISK}1" /mnt/winsetup
+mount -o loop,ro "$WIN_ISO" /mnt/winiso
+mount -o loop,ro "$VIRTIO_ISO" /mnt/virtio
+
+# --------------------------------------------------
+# 7. Copy Windows installer
+# --------------------------------------------------
+
+echo
+echo "Copying Windows installer..."
+
+rsync -aH --info=progress2 \
+    /mnt/winiso/ \
+    /mnt/winsetup/
+
+# --------------------------------------------------
+# 8. Copy VirtIO drivers
+# --------------------------------------------------
+
+echo
+echo "Copying VirtIO drivers..."
+
+mkdir -p /mnt/winsetup/virtio_drivers
+
+rsync -a \
+    /mnt/virtio/ \
+    /mnt/winsetup/virtio_drivers/
+
+# --------------------------------------------------
+# 9. Inject VirtIO into boot.wim
+# --------------------------------------------------
+
+echo
+echo "Injecting VirtIO drivers..."
+
+mkdir -p /root/wim
+
+rm -rf /root/wim/virtio_drivers
+
+cp -a \
+    /mnt/winsetup/virtio_drivers \
+    /root/wim/
+
+cat > /root/wim/update.txt <<'EOT'
+add virtio_drivers /virtio_drivers
+EOT
+
+cd /root/wim
+
+wimlib-imagex update \
+    /mnt/winsetup/sources/boot.wim \
+    2 \
+    < update.txt
+
+# --------------------------------------------------
+# 10. Install GRUB BIOS
+# --------------------------------------------------
+
+echo
+echo "Installing GRUB..."
+
+grub-install \
+    --target=i386-pc \
+    --boot-directory=/mnt/winsetup/boot \
+    "$DISK"
+
+# --------------------------------------------------
+# 11. GRUB config
+# --------------------------------------------------
+
+mkdir -p /mnt/winsetup/boot/grub
+
+cat > /mnt/winsetup/boot/grub/grub.cfg <<'EOT'
+set timeout=3
+set default=0
+
+insmod part_msdos
+insmod ntfs
+
+menuentry "Windows Server 2025 Installer" {
+    search --no-floppy --file --set=root /bootmgr
+    ntldr /bootmgr
 }
-EOF
+EOT
 
-cd /root/windisk
+# --------------------------------------------------
+# 12. Finish
+# --------------------------------------------------
 
-mkdir winfile
+sync
 
-wget -O win10.iso --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" https://go.microsoft.com/fwlink/?linkid=2273506
+echo
+echo "Final disk:"
+lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS
 
-mount -o loop win10.iso winfile
+echo
+echo "Unmounting..."
 
-rsync -avz --progress winfile/* /mnt
+umount /mnt/winiso
+umount /mnt/virtio
+umount /mnt/winsetup
 
-umount winfile
+sync
 
-wget -O virtio.iso https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso
-
-mount -o loop virtio.iso winfile
-
-mkdir /mnt/sources/virtio
-
-rsync -avz --progress winfile/* /mnt/sources/virtio
-
-cd /mnt/sources
-
-touch cmd.txt
-
-echo 'add virtio /virtio_drivers' >> cmd.txt
-
-wimlib-imagex update boot.wim 2 < cmd.txt
+echo
+echo "========================================"
+echo "READY"
+echo "========================================"
+echo
+echo "Now reboot and boot from local disk."
 
 reboot
-
-
