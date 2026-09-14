@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -e
 
 DISK=/dev/sda
 WORK=/root/windisk
@@ -20,7 +19,7 @@ lsblk "$DISK"
 # 1. Install required tools
 # --------------------------------------------------
 
-apt update
+apt update -y && apt upgrade -y
 apt install -y \
     grub2 \
     ntfs-3g \
