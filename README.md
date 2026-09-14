@@ -29,6 +29,7 @@ This guide provides step-by-step instructions for installing Windows 10 on a Con
 - Log in with the command `ssh root@<MACHINE-IP>` and enter your Rescue System password.
 - Execute the following commands:
 ```
+apt update
 apt install git -y
 git clone https://github.com/kodal/Windows-Server-Contabo-VPS.git
 cd Windows-Server-Contabo-VPS
