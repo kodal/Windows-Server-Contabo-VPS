@@ -23,7 +23,7 @@ apt update -y && apt upgrade -y
 apt install -y \
     grub2 \
     ntfs-3g \
-    wimtools
+    wimtools || true
 
 # --------------------------------------------------
 # 2. Completely wipe disk
