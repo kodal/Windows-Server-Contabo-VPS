@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 
 DISK=/dev/sda
@@ -52,11 +53,11 @@ echo "Creating MBR..."
 
 parted -s "$DISK" mklabel msdos
 
-# 8 GB installer
-parted -s "$DISK" mkpart primary ntfs 1MiB 8193MiB
+WINSETUP_SIZE=10GiB
 
-# Rest of disk for Windows
-parted -s "$DISK" mkpart primary ntfs 8193MiB 100%
+parted "$DISK" --script -- mklabel msdos
+parted "$DISK" --script -- mkpart primary ntfs 1MiB "$WINSETUP_SIZE"
+parted "$DISK" --script -- mkpart primary ntfs "$WINSETUP_SIZE" 100%
 
 parted -s "$DISK" set 1 boot on
 
