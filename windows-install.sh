@@ -20,7 +20,8 @@ lsblk "$DISK"
 # 1. Install required tools
 # --------------------------------------------------
 
-apt update -y && apt upgrade -y || true
+apt update -y || true
+apt upgrade -y || true
 apt install -y \
     grub2 \
     ntfs-3g \
