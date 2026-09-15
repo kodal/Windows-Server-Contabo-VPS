@@ -98,7 +98,6 @@ echo
 echo "Downloading VirtIO ISO..."
 
 wget \
-    --user-agent="Mozilla/5.0" \
     -O "$VIRTIO_ISO" \
     "$VIRTIO_URL" || {
     echo "ERROR: VirtIO ISO download failed"
