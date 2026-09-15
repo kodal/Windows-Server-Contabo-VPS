@@ -4,7 +4,7 @@
 DISK=/dev/sda
 WORK=/mnt/storage
 
-WIN_URL="https://go.microsoft.com/fwlink/?linkid=2273506"
+WIN_URL="https://go.microsoft.com/fwlink/?linkid=2345730&culture=en-us&country=us"
 VIRTIO_URL="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso"
 
 WIN_ISO="$WORK/winserver.iso"
