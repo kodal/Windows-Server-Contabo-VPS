@@ -2,7 +2,7 @@
 
 
 DISK=/dev/sda
-WORK=/root/windisk
+WORK=/mnt/storage
 
 WIN_URL="https://go.microsoft.com/fwlink/?linkid=2273506"
 VIRTIO_URL="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.302-1/virtio-win-0.1.302.iso"
@@ -73,6 +73,10 @@ echo "Formatting..."
 mkfs.ntfs -f -L WINSETUP "${DISK}1"
 mkfs.ntfs -f -L WINDOWS "${DISK}2"
 
+mkdir -p /mnt/storage
+mount "${DISK}2" /mnt/storage
+mkdir -p "$WORK"
+
 # --------------------------------------------------
 # 5. Download ISO files
 # --------------------------------------------------
@@ -85,7 +89,10 @@ echo "Downloading Windows Server ISO..."
 wget \
     --user-agent="Mozilla/5.0" \
     -O "$WIN_ISO" \
-    "$WIN_URL"
+    "$WIN_URL" || {
+    echo "ERROR: Windows ISO download failed"
+    exit 1
+}
 
 echo
 echo "Downloading VirtIO ISO..."
@@ -93,7 +100,10 @@ echo "Downloading VirtIO ISO..."
 wget \
     --user-agent="Mozilla/5.0" \
     -O "$VIRTIO_ISO" \
-    "$VIRTIO_URL"
+    "$VIRTIO_URL" || {
+    echo "ERROR: VirtIO ISO download failed"
+    exit 1
+}
 
 # --------------------------------------------------
 # 6. Mount partitions / ISOs
