@@ -22,10 +22,7 @@ lsblk "$DISK"
 
 apt update -y || true
 apt upgrade -y || true
-apt install -y \
-    grub2 \
-    ntfs-3g \
-    wimtools || true
+apt install -y grub2 ntfs-3g wimtools || true
 
 # --------------------------------------------------
 # 2. Completely wipe disk
